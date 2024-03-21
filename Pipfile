@@ -4,6 +4,9 @@ verify_ssl = true
 name = 'pypi'
 
 [packages]
+# provider
+googlemaps = '>=4.10.0'
+
 # web request
 requests = '*'
 lxml = '*'
@@ -12,6 +15,11 @@ pydantic = '*'
 # data science
 pandas = '*'
 geopandas = '*'
+
+# utilities
+tqdm = '*'
+loguru = '*'
+sqlalchemy = '*'
 
 [requires]
 python_version = "3.9"
