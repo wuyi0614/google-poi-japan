@@ -4,6 +4,7 @@
 #
 
 import json
+import pandas as pd
 
 from pathlib import Path
 from datetime import datetime
@@ -117,6 +118,12 @@ def insert(engine, tbl: str, *args, **kwargs):
     session.close()
     LOGGER.info(f'Insert {len(records)} records into table[{tbl}]!')
     return
+
+
+def read(engine, tbl: str):
+    """Read a table from sqlite3 database"""
+    d = pd.read_sql_table(tbl, engine)
+    return d
 
 
 if __name__ == '__main__':

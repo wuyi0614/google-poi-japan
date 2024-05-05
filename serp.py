@@ -3,8 +3,8 @@
 # Created by Yi on 19 March 2024.
 #
 
+import re
 import json
-import time
 import requests
 
 from tqdm import tqdm
@@ -100,7 +100,7 @@ def parse_request(response: requests.models.Response, engine) -> str:
                    title=d.get('title', ''),
                    address=d.get('address', ''),
                    coordinates=f'{lat}+{lng}',
-                   search_type=' '.join(para['q'].split(' ')[1:]),
+                   search_type=' '.join(re.findall(r'([\w\s]+) near', para['q'])),
                    return_type=d.get('type', ''),
                    rating=d.get('rating', -1),  # neg values mean missing
                    reviews_original=d.get('reviews_original', ''),
@@ -162,7 +162,7 @@ if __name__ == '__main__':
     engine = create_engine(sqlite)
 
     # request test
-    stops = conf['stops'][:2]
-    types = conf['include-types'][:2]
-    items = create_request(stops, types, conf['apikey'])
+    stops = conf['stops'][:1]
+    types = conf['include-types'][20:]
+    items = create_request(stops, types, conf['apikey3'])
     request_by_pages(items, endpoint=conf['endpoint'], engine=engine)
