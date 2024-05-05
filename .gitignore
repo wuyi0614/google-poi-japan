@@ -1,6 +1,9 @@
 # Customised files
+*-old.*
 conf*
 data/
+.DS*
+.idea/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
