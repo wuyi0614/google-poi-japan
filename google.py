@@ -14,7 +14,8 @@ from pydantic import BaseModel
 
 from utils import get_config
 
-ENDPOINT = 'https://places.googleapis.com/v1/places:searchNearby'
+ENDPOINT_NEARBY = 'https://places.googleapis.com/v1/places:searchNearby'
+ENDPOINT_TEXT = 'https://places.googleapis.com/v1/places:searchText'
 
 
 class BasicRequest(BaseModel):
@@ -89,10 +90,11 @@ def get_places(r: requests.models.Response,
     return pd.DataFrame(li)
 
 
-def google_search(apikey: str):
+def google_nearby_search(apikey: str):
+    """Depreciated function since its pagination is not desirable!!!"""
     client = googlemaps.Client(key=apikey)
     params = dict(
-        location=[35.5271464711313, 139.43821501651442], # lat lon of The White House
+        location=[35.5271464711313, 139.43821501651442],  # lat lon of The White House
         radius=100,  # radius in meters
         page_token=None,  # page token for going to next page of search
         language='en')
@@ -104,12 +106,22 @@ def google_search(apikey: str):
     params['page_token'] = page1['next_page_token']
     page2 = client.places_nearby(type=place_type, **params)
 
-    params['page_token'] = page2['next_page_token']
-    page3 = client.places_nearby(type=place_type, **params)
-
     rs = []
-    for p in [page1]:
+    for p in [page1, page2]:
         rs += [r['name'] for r in p['results']]
+
+
+def google_place_search(apikey, q: str, fields: list = None):
+    """Search places with texts"""
+    if fields is None:
+        fields = ['formatted_address', 'name', 'geometry', 'place_id', 'types']
+
+    client = googlemaps.Client(key=apikey)
+    page = client.find_place(input=q, input_type='textquery', fields=fields, language='en')
+    points = page['candidates']
+
+    assert len(points) > 0, f'Found nothing on {q}'
+    return points
 
 
 def run():
@@ -138,8 +150,26 @@ if __name__ == '__main__':
                        radius=80,
                        max_results=20,
                        include_types=[])
-    response = requests.post(ENDPOINT,
+    response = requests.post(ENDPOINT_NEARBY,
                              json=item.dict(),
                              headers=headers)
     save = Path('data')
     places = get_places(response, save)
+
+    # test google place search
+    stops = conf['stops']
+    stations = []
+    for i, stop in enumerate(stops[42:]):
+        stations += google_place_search(apikey, q=f'{stop[2]} Station')
+
+    # convert results into a dataframe
+    out = pd.DataFrame(stations)
+    out['lat'] = out['geometry'].apply(lambda x: x['location']['lat'])
+    out['lng'] = out['geometry'].apply(lambda x: x['location']['lng'])
+    # merge searched stops with stop info
+    sto = pd.DataFrame(stops, columns=['id', 'title', 'name', 'region'])
+    sto['name'] = sto['name'].apply(lambda x: f"{x} Station")
+    sto.to_excel(save / f'odakyu-stops-{get_timestamp()}.xlsx', index=False)
+    out = out.merge(sto, on='name', how='left')
+    out.to_excel(save / f'odakyu-stops-updated-{get_timestamp()}.xlsx', index=False)
+    # the final version: odakyu-stops-final-2024-05-06.xlsx
