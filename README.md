@@ -21,7 +21,7 @@ Codes for the extraction of POI data in Japan
 - Only 20 results will be returned per request and 60 results maximum from Google Map APIs.
 - 6,000 searches in a month for nearbysearch yield no charge (see https://mapsplatform.google.com/pricing/?hl=zh-cn&_gl=1%2Atuvq1w%2A_ga%2AMTc5MzI2MjI0NC4xNzEwNzUyODgx%2A_ga_NRWSTWS78N%2AMTcxMDc1MzgwMy4xLjEuMTcxMDc1NzY3OC4wLjAuMA..#pricing-grid).
 - SerpApi offers 20 results with pagination from Places Search (demo https://serpapi.com/playground?engine=google_local&q=Restaurants&location=Sagamihara%2C+Kanagawa+Prefecture%2C+Japan&google_domain=google.co.jp&gl=jp&hl=ja&start=20)
-- 
+- 58,661 and 116,767 POIs around Odakyu stations within 1km and 2km distances respectively.
 
 ## Quick Start
 
@@ -32,8 +32,10 @@ with the script `google.py` to scrape down the data.
 
 ### Parsing-related
 
-- [ ] iterative loader and parser should be developed (cannot dump 34GB data in memory)
-- [ ] a validator for info about `price_level` and `reviews`
+- [x] iterative loader and parser should be developed (cannot dump 34GB data in memory)
+- [x] a validator for info about `price_level` and `reviews`
+- [x] use a SQLite database for tokyo listings and odakyu-1k/2k matched data dumping
+- [x] finalised basic information and data for Odakyu stations and matched POIs
 
 ### Scraping-related
 

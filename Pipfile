@@ -15,12 +15,14 @@ pydantic = '*'
 # data science
 pandas = '*'
 openpyxl = '*'
-geopandas = '*'
+geopy = ">=2.4"
+geopandas = ">=0.14.4"
 
 # utilities
 tqdm = '*'
 loguru = '*'
 sqlalchemy = '*'
+timeit = '*'
 
 [requires]
 python_version = "3.9"
