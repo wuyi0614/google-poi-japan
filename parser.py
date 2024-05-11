@@ -199,8 +199,9 @@ if __name__ == '__main__':
     # retrieve Tokyo data
     sqlite = 'sqlite:///data/tokyo-poi.db'
     engine = create_engine(sqlite)
-    retrieve_by_region(fname, size, region=['Tokyo', '東京都', 'tokyo'],
-                       save=Path(sqlite), to_tbl='tokyo', engine=engine)
+    odakyu_regions = ['Tokyo', '東京都', 'tokyo', 'Kanagawa', 'kanagawa', '神奈川縣', '神奈川']
+    retrieve_by_region(fname, size, region=odakyu_regions,
+                       save=Path(sqlite), to_tbl='odakyu', engine=engine)
 
     # retrieve station-nearby POIs
     file = Path('result') / 'odakyu-stops-final-2024-05-06.xlsx'
@@ -210,11 +211,11 @@ if __name__ == '__main__':
     neighbours = gpd.GeoDataFrame(neighbours, geometry=gpd.points_from_xy(neighbours.lng, neighbours.lat),
                                   crs='EPSG:4326').to_crs('EPSG:3857')
     # retrieve both 1/2k buffered POIs
-    retrieve_by_neighbours(engine, 'tokyo', neighbours, buffer=1000, to_tbl='odakyu1k')
-    retrieve_by_neighbours(engine, 'tokyo', neighbours, buffer=2000, to_tbl='odakyu2k')
+    retrieve_by_neighbours(engine, 'odakyu', neighbours, buffer=1000, to_tbl='odakyu1k')
+    retrieve_by_neighbours(engine, 'odakyu', neighbours, buffer=2000, to_tbl='odakyu2k')
 
     # retrieve cids
     cids_1k = pd.read_sql_table('odakyu1k', engine)['cid'].tolist()
     cids_2k = pd.read_sql_table('odakyu2k', engine)['cid'].tolist()
-    k1 = retrieve_by_cid(engine, 'tokyo', cids_1k, save, 'odakyu-listing1k')
-    k2 = retrieve_by_cid(engine, 'tokyo', cids_2k, save, 'odakyu-listing2k')
+    k1 = retrieve_by_cid(engine, 'odakyu', cids_1k, save, 'odakyu-listing1k')
+    k2 = retrieve_by_cid(engine, 'odakyu', cids_2k, save, 'odakyu-listing2k')

@@ -4,6 +4,10 @@ conf*
 data/
 .DS*
 .idea/
+*.csv
+*.gz
+refs/
+saba/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

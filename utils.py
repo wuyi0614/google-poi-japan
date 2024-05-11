@@ -88,8 +88,8 @@ class POI(Base):
     timestamp = Column(TEXT, comment='timestamp for each record')
 
 
-class TokyoListing(Base):
-    __tablename__ = 'tokyo'
+class Odakyu(Base):
+    __tablename__ = 'odakyu'
     id = Column(Integer, primary_key=True, autoincrement=True, comment='incremental ids for records')
     # columns for Google Business Listing data
     title = Column(TEXT)
@@ -301,7 +301,7 @@ class Odakyu2k(Base):
 
 # pre-defined table objects
 # TABLES = {'response': Response, 'poi': POI}
-TABLES = {'tokyo': TokyoListing, 'odakyu1k': Odakyu1k, 'odakyu2k': Odakyu2k}
+TABLES = {'odakyu': Odakyu, 'odakyu1k': Odakyu1k, 'odakyu2k': Odakyu2k}
 LOGGER = init_logger('database')
 
 
