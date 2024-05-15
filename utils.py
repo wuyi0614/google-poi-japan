@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 
 from sqlalchemy import TEXT, Integer, Float, Column
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from loguru import logger
@@ -344,7 +344,7 @@ if __name__ == '__main__':
     sqlite = 'sqlite:///data/tokyo-poi.db'
     engine = create_engine(sqlite)
     # delete all tables
-    # Base.metadata.drop_all(engine)
+    Base.metadata.drop_all(engine)
     # rebuild all tables
     Base.metadata.create_all(engine)
     assert (Path('data') / 'tokyo-poi.db').is_file(), 'Database mocking failed!'

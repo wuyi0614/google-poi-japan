@@ -5,7 +5,7 @@ name = 'pypi'
 
 [packages]
 # provider
-googlemaps = '>=4.10.0'
+#googlemaps = '>=4.10.0'
 
 # web request
 requests = '*'
@@ -15,14 +15,13 @@ pydantic = '*'
 # data science
 pandas = '*'
 openpyxl = '*'
-geopy = ">=2.4"
-geopandas = ">=0.14.4"
+geopy = '*'
+geopandas = '*'
 
 # utilities
 tqdm = '*'
 loguru = '*'
 sqlalchemy = '*'
-timeit = '*'
 
 [requires]
-python_version = "3.9"
+python_version = "3.9.1"

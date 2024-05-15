@@ -9,7 +9,6 @@ from math import radians, sin, cos, asin, sqrt
 from collections import namedtuple
 
 from tqdm import tqdm
-from timeit import default_timer as timer
 
 from utils import insert, get_timestamp
 
@@ -53,7 +52,8 @@ def neighbour_compute(src: gpd.GeoDataFrame,
                       to_tbl: str,
                       engine,
                       step: int = 100,
-                      buffer: int = 1000):
+                      buffer: int = 1000,
+                      to_poi: str = 'odakyu'):
     """
     Find neighbouring points around target points
 
@@ -63,20 +63,20 @@ def neighbour_compute(src: gpd.GeoDataFrame,
     :param engine: a sqlite3 engine
     :param step: batch size for computing, default 100
     :param buffer: buffer size (radius) for geopandas's geometry, default 1000 meters
+    :param to_poi: a table name for poi saving in sqlite3
     :return: None
     """
     # to make sure the unit of buffer is meter, use EPSG:3857 as crs
-    for i in tqdm(range(0, len(src), step)):
+    for i in range(0, len(src), step):
         comm = src.iloc[i: (i + step), :]
         x = tar.buffer(buffer).unary_union
 
-        t0 = timer()
         nearby = comm["geometry"].intersection(x)
-        print(f"time: {timer() - t0}")
         confirmed = comm[~nearby.is_empty]
         if confirmed.empty:
             continue
 
+        confirmed = confirmed.drop(columns='geometry')
         rds = confirmed.to_dict(orient='records')
         # calculate distances between POIs and stations
         coords = [Coord(lng, lat) for lng, lat in zip(tar['lng'], tar['lat'])]
@@ -90,6 +90,10 @@ def neighbour_compute(src: gpd.GeoDataFrame,
             item['timestamp'] = get_timestamp()
             items += [item]
 
+        # insert distance results
         insert(*items, engine=engine, tbl=to_tbl)
+        # insert selected pois
+        insert(*rds, engine=engine, tbl=to_poi)
+
     # completed
     return

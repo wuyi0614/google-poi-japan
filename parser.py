@@ -115,7 +115,7 @@ def retrieve_by_region(fname: Path,
         columns = [i.replace('.', '_') for i in chunk.columns.values.tolist()]
         chunk.columns = columns
         mask = chunk['address_info_region'].str.match(f'{re_region}').fillna(False)
-        out = chunk[mask]
+        out = chunk[mask] if region else chunk
         # counting records
         count += len(out)
         # different I/O options
@@ -138,31 +138,35 @@ def retrieve_by_region(fname: Path,
     return out
 
 
-def retrieve_by_neighbours(engine,
-                           from_tbl: str,
+def retrieve_by_neighbours(fname: Path,
                            neighbours: gpd.GeoDataFrame,
                            buffer: int,
                            to_tbl: str,
+                           size: int = 10000,
                            step: int = 1000):
     """
-    :param engine: a sqlite3 engine for loading
-    :param from_tbl: a table name for data loading
+    :param fname: a filepath for datafile
     :param neighbours: a dataframe of neighbour points, e.g. stations
     :param buffer: a radius that finds POIs within the circle
     :param to_tbl: a table name for data saving
+    :param size: chunksize for CSV loading
     :param step: how big a chunck for geometry matching
     :return: a dataframe
     """
     # convert df.poi into gpd.poi, and Google's default crs=4326
-    chunk = pd.read_sql_table(from_tbl, engine)
-    g = gpd.GeoDataFrame(chunk, geometry=gpd.points_from_xy(chunk.longitude, chunk.latitude), crs='EPSG:4326')
-    g = g.to_crs('EPSG:3857')
-    # find intersection between the chunk and neighbours and dump into sqlite3 db
-    neighbour_compute(g, neighbours, to_tbl, engine, step=step, buffer=buffer)
+    for chunk in tqdm(pd.read_csv(fname, chunksize=size), desc='Load chunks'):
+        columns = [i.replace('.', '_') for i in chunk.columns.values.tolist()]
+        chunk.columns = columns
+        g = gpd.GeoDataFrame(chunk, geometry=gpd.points_from_xy(chunk.longitude, chunk.latitude), crs='EPSG:4326')
+        g = g.to_crs('EPSG:3857')
+        # find intersection between the chunk and neighbours and dump into sqlite3 db
+        g['cid'] = g['cid'].astype(str)
+        neighbour_compute(g, neighbours, to_tbl, engine, step=step, buffer=buffer)
+
     return
 
 
-def retrieve_by_cid(engine, from_tbl: str, cid: list, save: Path, fname: str):
+def retrieve_by_cid(engine, from_tbl: str, cid: list, save: Path, fname: str, crs: str='EPSG:4326'):
     """
     Retrieve and dump data by a list of cids
 
@@ -171,11 +175,19 @@ def retrieve_by_cid(engine, from_tbl: str, cid: list, save: Path, fname: str):
     :param cid: a list of cid (google ids)
     :param save: a filepath for saving with filename
     :param fname: a string-like filename
+    :param crs: crs schema, default for 3857
     :return: a dataframe
     """
     chunk = pd.read_sql_table(from_tbl, engine)
     out = chunk[chunk['cid'].isin(cid)]
-    out.to_csv(save / f'{fname}-{get_timestamp()}.csv', index=False, encoding='utf8')
+    # NB. to_file does not work with M2 chips
+    # out = gpd.GeoDataFrame(out, geometry=gpd.points_from_xy(out.longitude, out.latitude), crs=crs)
+    # out.to_file(str(save / f'{fname}-{get_timestamp()}.shp'), encoding='utf8')
+    # instead, use csv but convert longitude and latitude into 3857 schema
+    g = gpd.GeoDataFrame(out, geometry=gpd.points_from_xy(out.longitude, out.latitude), crs=crs).to_crs('EPSG:3857')
+    out['lng3857'] = g.geometry.apply(lambda x: x.coords._coords[0][0])
+    out['lat3857'] = g.geometry.apply(lambda x: x.coords._coords[0][1])
+    out.to_csv(str(save / f'{fname}-{get_timestamp()}.csv'), index=False, encoding='utf8')
     return out
 
 
@@ -211,8 +223,8 @@ if __name__ == '__main__':
     neighbours = gpd.GeoDataFrame(neighbours, geometry=gpd.points_from_xy(neighbours.lng, neighbours.lat),
                                   crs='EPSG:4326').to_crs('EPSG:3857')
     # retrieve both 1/2k buffered POIs
-    retrieve_by_neighbours(engine, 'odakyu', neighbours, buffer=1000, to_tbl='odakyu1k')
-    retrieve_by_neighbours(engine, 'odakyu', neighbours, buffer=2000, to_tbl='odakyu2k')
+    retrieve_by_neighbours(fname, neighbours, buffer=1000, to_tbl='odakyu1k', size=10000)
+    retrieve_by_neighbours(fname, neighbours, buffer=2000, to_tbl='odakyu2k', size=10000)
 
     # retrieve cids
     cids_1k = pd.read_sql_table('odakyu1k', engine)['cid'].tolist()
