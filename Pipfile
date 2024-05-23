@@ -4,6 +4,9 @@ verify_ssl = true
 name = 'pypi'
 
 [packages]
+# ai
+openai = '*'
+
 # provider
 #googlemaps = '>=4.10.0'
 

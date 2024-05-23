@@ -4,10 +4,12 @@
 #
 
 import json
-import pandas as pd
 
 from pathlib import Path
 from datetime import datetime
+
+import openai
+import pandas as pd
 
 from sqlalchemy import TEXT, Integer, Float, Column
 from sqlalchemy import create_engine, inspect
@@ -23,6 +25,35 @@ DEFAULT_LOG_DIR = Path('logs')
 DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def openaix(client,
+            text: str,
+            prompt: str = None,
+            messages: list = None,
+            model: str = 'gpt-3.5-turbo-0125',
+            max_tokens: int = 4000,
+            **kwargs) -> str:
+    """
+    Use openai api to create chats and get responses.
+
+    :param client: openai client
+    :param text: query text
+    :param prompt: prompt for translator
+    :param messages: a list of prompts / requests for GPT
+    :param model: a GPT model, default `gpt-3.5-turbo`
+    :param max_tokens: the maximum context, default 4000 (max=4096)
+    :return: string
+    """
+    prompt = text if prompt is None else prompt + f'{text}'
+    messages = [{'role': 'user', 'content': prompt}] if messages is None else messages
+    response = client.chat.completions.create(
+        messages=messages,
+        model=model,
+        max_tokens=max_tokens,
+        n=1, stop=None, temperature=0.5,
+    )
+    return response.choices[0].message.content
+
+
 def init_logger(name, out_dir=None, level='INFO'):
     logger.remove()  # remove the initial handler
 
@@ -34,7 +65,7 @@ def init_logger(name, out_dir=None, level='INFO'):
     return logger
 
 
-def get_timestamp(fmt: str = '%Y-%m-%d %H:%M:%S'):
+def get_timestamp(fmt: str = '%Y-%m-%d %H-%M-%S'):
     return datetime.now().strftime(fmt)
 
 
