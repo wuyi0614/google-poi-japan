@@ -147,7 +147,7 @@ def retrieve_by_neighbours(fname: Path,
     """
     :param fname: a filepath for datafile
     :param neighbours: a dataframe of neighbour points, e.g. stations
-    :param buffer: a radius that finds POIs within the circle
+    :param buffer: a radius that finds POIs within the circle, or a list of buffers
     :param to_tbl: a table name for data saving
     :param size: chunksize for CSV loading
     :param step: how big a chunck for geometry matching
@@ -179,14 +179,12 @@ def retrieve_by_cid(engine, from_tbl: str, cid: list, save: Path, fname: str, cr
     :return: a dataframe
     """
     chunk = pd.read_sql_table(from_tbl, engine)
-    out = chunk[chunk['cid'].isin(cid)]
+    chunk = chunk.drop(columns='id')
+    out = chunk[chunk['cid'].isin(cid)].drop_duplicates()
     # NB. to_file does not work with M2 chips
     # out = gpd.GeoDataFrame(out, geometry=gpd.points_from_xy(out.longitude, out.latitude), crs=crs)
     # out.to_file(str(save / f'{fname}-{get_timestamp()}.shp'), encoding='utf8')
     # instead, use csv but convert longitude and latitude into 3857 schema
-    g = gpd.GeoDataFrame(out, geometry=gpd.points_from_xy(out.longitude, out.latitude), crs=crs).to_crs('EPSG:3857')
-    out['lng3857'] = g.geometry.apply(lambda x: x.coords._coords[0][0])
-    out['lat3857'] = g.geometry.apply(lambda x: x.coords._coords[0][1])
     out.to_csv(str(save / f'{fname}-{get_timestamp()}.csv'), index=False, encoding='utf8')
     return out
 
@@ -223,6 +221,7 @@ if __name__ == '__main__':
     neighbours = gpd.GeoDataFrame(neighbours, geometry=gpd.points_from_xy(neighbours.lng, neighbours.lat),
                                   crs='EPSG:4326').to_crs('EPSG:3857')
     # retrieve both 1/2k buffered POIs
+    # NB. produce duplicates if the two lines are separately executed!!!
     retrieve_by_neighbours(fname, neighbours, buffer=1000, to_tbl='odakyu1k', size=10000)
     retrieve_by_neighbours(fname, neighbours, buffer=2000, to_tbl='odakyu2k', size=10000)
 
