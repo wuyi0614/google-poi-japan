@@ -30,6 +30,14 @@ with the script `google.py` to scrape down the data.
 
 ## TODO
 
+### Computing-related
+
+- [x] create an optimal & annotated (manual+auto) POI category list: `optimal-poi-categorised.xlsx`
+- [x] manually annotated over 600 records and filter those tertiary-categorised POIs with <10 entries (~1.9%)
+- [x] use TF-IDF method to predict the primary and secondary categories with 287 training samples and 2016 predicted samples (14.2%)
+- [ ] properly link trip purpose (grouped population) and POI categories
+- [x] summarise 15 primary, 90 secondary, 1016 tertiary POI categories
+
 ### Parsing-related
 
 - [x] iterative loader and parser should be developed (cannot dump 34GB data in memory)
@@ -44,4 +52,3 @@ with the script `google.py` to scrape down the data.
 - [x] check how `fields` work in the query and how many results we will usually get
 - [x] add serpapi based codes for places crawling
 - [x] save api results in `sqlite` with its query and response as a `cache`
-- [ ] price information needs bug fixing waiting for SerpApi team's response
