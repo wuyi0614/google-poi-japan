@@ -7,6 +7,9 @@ name = 'pypi'
 # ai
 openai = '*'
 
+# statistical model
+statsmodels = '>=0.14'
+
 # provider
 #googlemaps = '>=4.10.0'
 
@@ -20,6 +23,7 @@ pandas = '*'
 openpyxl = '*'
 geopy = '*'
 geopandas = '*'
+matplotlib = '*'
 
 # utilities
 tqdm = '*'
