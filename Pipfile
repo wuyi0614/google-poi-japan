@@ -6,6 +6,7 @@ name = 'pypi'
 [packages]
 # ai
 openai = '*'
+scikit-learn = '*'
 
 # statistical model
 statsmodels = '>=0.14'
@@ -24,6 +25,7 @@ openpyxl = '*'
 geopy = '*'
 geopandas = '*'
 matplotlib = '*'
+seaborn = '*'
 
 # utilities
 tqdm = '*'

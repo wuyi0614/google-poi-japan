@@ -37,6 +37,7 @@ with the script `google.py` to scrape down the data.
 - [x] use TF-IDF method to predict the primary and secondary categories with 287 training samples and 2016 predicted samples (14.2%)
 - [ ] properly link trip purpose (grouped population) and POI categories
 - [x] summarise 15 primary, 90 secondary, 1016 tertiary POI categories
+- [ ] passengers data lack of description over variables
 
 ### Parsing-related
 

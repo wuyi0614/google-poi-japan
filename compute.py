@@ -2,15 +2,18 @@
 #
 # Created by Yi on 25 May 2024.
 #
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 from pathlib import Path
 
 import pandas as pd
+import geopandas as gpd
 import numpy as np
 import statsmodels.api as sm
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from scipy.stats import entropy
+from sklearn.preprocessing import minmax_scale
 from utils import get_timestamp, create_engine
 
 
@@ -47,19 +50,66 @@ def get_poi_by_station(d: pd.DataFrame, dmap: pd.DataFrame, station_id: str, rad
     return o
 
 
-def add_factors(d: pd.DataFrame,
-                dmap: pd.DataFrame,
-                purpose: pd.DataFrame,
-                station: pd.DataFrame,
-                save: Path,
-                radius: float = 2) -> pd.DataFrame:
+def factorise(data: pd.DataFrame, keep_zero: bool = False):
+    """Log-transform for variables"""
+    # convert variables
+    for key in data.columns:
+        if key in ['station', 'category']:
+            continue
+
+        if keep_zero and not data[data[key] == 0].empty:
+            data[key] = np.log(data[key] + 1)
+        else:
+            data[key] = np.log(data[key])
+
+    return data
+
+
+def add_measure(full: pd.DataFrame, poi: pd.DataFrame, near: pd.DataFrame, category: str) -> tuple:
+    """
+    Compute measures (indicators) near a station and add them up in the dataset
+
+    :param full: the full dataframe with all POIs even not near stations
+    :param poi: the POIs near a station
+    :param near: the dataframe with selected POIs near a station
+    :param category: the specific category for computation
+    :return: a list of variables
+    """
+    # compute Y=reviews (i->j, reviews, inflows)
+    g_ij = near['rating_votes_count'].dropna().mean()
+    # compute k_ij
+    k_ij = entropy(near['rating_value'].dropna().values)
+    if k_ij == 0:
+        k_ij = np.nan
+    # compute v_i1
+    v_i1 = len(poi)
+    # TODO: compute v_i2 when population data is ready
+    # compute w_j1
+    w_j1 = len(near[near['rating_value'] > 0]) / len(poi)
+    # compute w_j2
+    selected = full[full['secondary'] == category]
+    pi = selected['primary'].unique()[0]
+    omega = (len(selected) / len(full[full['primary'] == pi]))
+    count = near[['id', 'category']].groupby('category').count().reset_index()
+    count = count['id'].values
+    p = (count * (count - 1)).sum() / (count * (count.sum() - 1)).sum()
+    w_j2 = 1 - omega * p
+    # compute d_ij
+    d_ij = near['distance'].mean()
+    return [g_ij, k_ij, v_i1, w_j1, w_j2, d_ij], ['g', 'k', 'v1', 'w1', 'w2', 'd']
+
+
+def baseline(d: pd.DataFrame,
+             dmap: pd.DataFrame,
+             station: pd.DataFrame,
+             save: Path = Path('figures'),
+             radius: float = 2) -> pd.DataFrame:
     """Add on factors such as accessibility, reviews (place_topics) and rating.
     The data structure should be a bilateral i->j form and k-th , e.g.
     stop_i, category_j, X_i, X_j, d_ij, ...
 
     :param d: the odakyu dataframe
     :param dmap: distance map for all POIs and stations
-    :param purpose: the purpose relationship table between population groups and POIs
     :param station: the station info dataframe
     :param save: path for saving the dataframe
     :param radius: a float radius that limits POIs selected
@@ -69,17 +119,81 @@ def add_factors(d: pd.DataFrame,
     stops = station['id'].tolist()
     # for each station, we get poi and then extract variables
     for stop in tqdm(stops, desc='Building'):
-        p = get_poi_by_station(d, dmap, stop)
+        p = get_poi_by_station(d, dmap, stop, radius)
+        # for a specific category j
+        for c, g in p.groupby('secondary'):
+            row, keys = add_measure(d, p, g, c)
+            rows += [[stop, c] + row]
+
+    # create the dataset
+    dat = pd.DataFrame(rows, columns=['station', 'category'] + keys)
+    dat = factorise(dat)
+    dat.replace([np.inf, -np.inf], np.nan, inplace=True)
+    # run baseline model for estimating the overall attractiveness
+    dat = dat.dropna(how='any')
+    model = sm.OLS(dat['g'], dat[keys[1:]])
+    results = model.fit(cov_type='HC1')
+    print(results.summary())
+
+    # run subsamples for station-specific attractiveness
+    att_by_station = []
+    for stop, g in tqdm(dat.groupby('station'), desc='By station fitting'):
+        m = sm.OLS(g['g'], g[keys[1:]])
+        fitted = m.fit(cov_type='HC1')
+        att_by_station += [[stop] + fitted.params.loc[['w1', 'w2']].tolist()]
+
+    att_by_station = pd.DataFrame(att_by_station, columns=['id', 'attract1', 'attract2'])
+    att_by_station = att_by_station.merge(station[['id', 'name']], on='id', how='left')
+    att_by_station = att_by_station.sort_values('attract2', ascending=True)
+
+    # simplified plotting
+    fig = plt.figure(figsize=(8, 10))
+    plt.plot(att_by_station.att.values, range(len(att_by_station)))
+    plt.yticks(range(len(att_by_station)), att_by_station.name.tolist(), rotation=0)
+    plt.tight_layout()
+    plt.margins(0.01)
+    fig.savefig(save / f'attract-by-station-{get_timestamp()}.png', format='png', dpi=150)
+    plt.show()
+    return dat
+
+
+def extended(d: pd.DataFrame,
+             dmap: pd.DataFrame,
+             purpose: pd.DataFrame,
+             station: pd.DataFrame,
+             save: Path,
+             radius: float = 2) -> pd.DataFrame:
+    """
+    Modified / advanced model where a few changes could be made,
+    - distance could be adjusted by price_level
+    - opening time / popular times, workdays / weekends
+    - accessibility (wheels)
+
+    :param d: the odakyu dataframe
+    :param dmap: distance map for all POIs and stations
+    :param station: the station info dataframe
+    :param save: path for saving the dataframe
+    :param radius: a float radius that limits POIs selected
+    """
+    # family groups
+    fgroups = ['aged family', 'single family', 'family with pets', 'nuclear family', 'acessibility family', 'tourist']
+    # build the dataset
+    rows = []
+    d['cid'] = d['cid'].astype(str)
+    stops = station['id'].tolist()
+    # for each station, we get poi and then extract variables
+    for stop in tqdm(stops, desc='Building'):
+        p = get_poi_by_station(d, dmap, stop, radius)
         # for a specific category j
         for c, g in p.groupby('secondary'):
             # get Y=reviews (i->j, reviews, inflows)
-            y = g['rating_votes_count'].dropna().mean()
+            gdist = purpose.loc[purpose['secondary'] == c, fgroups].astype(int)
+            gdist = gdist.values / gdist.values.sum()
+            y = g['rating_votes_count'].dropna().sum()
             if y == np.nan:  # only have unrated POIs
                 continue
 
-            # NB. alternatively, use high-rating users
-            # g['rater'] = g['rating_distribution'].dropna().apply(lambda x: sum(list(eval(x).values())[:-2]))
-            # y = g['rater'].sum()
+            y_group = (y * gdist).round(0).tolist()
             # get distances
             di = g['distance'].mean()
             # get X_i using number of POIs around the station or total passengers
@@ -93,54 +207,58 @@ def add_factors(d: pd.DataFrame,
             if a == 0:
                 continue
 
-            rows += [[stop, c, y, di, a, xi, xj]]
+            rows += [[stop, c, di, a, xi, xj] + y_group[0]]
 
-    # create the dataset
-    dat = pd.DataFrame(rows, columns=['station', 'category', 'y', 'distance', 'alpha', 'xi', 'xj'])
-    # convert variables
-    dat['y'] = np.log(dat['y'])
-    dat['distance'] = np.log(dat['distance'])
-    dat['alpha'] = np.log(dat['alpha'])
-    dat['xi'] = np.log(dat['xi'])
-    dat['xj'] = np.log(dat['xj'])
-    # run baseline model for estimating the overall attractiveness
-    dat = dat.dropna(how='any')
-    model = sm.OLS(dat['y'], dat[['distance', 'alpha', 'xi', 'xj']])
-    results = model.fit(cov_type='HC1')
-    print(results.summary())
+    ynames = [f'y_{i}' for i in range(len(fgroups))]
+    dat = pd.DataFrame(rows, columns=['station', 'category', 'distance', 'alpha', 'xi', 'xj'] + ynames)
+    dat = factorise(dat, keep_zero=True)
+    # run subsamples for demographic-specific attractiveness
+    att_by_demo = []
+    for stop, g in tqdm(dat.groupby('station'), desc='By station fitting'):
+        for i, f in enumerate(fgroups):
+            m = sm.OLS(g[f'y_{i}'], g[['distance', 'alpha', 'xi', 'xj']])
+            fitted = m.fit(cov_type='HC1')
+            att_by_demo += [
+                [stop, f, fitted.params.loc['xj'], fitted.pvalues.loc['xj']] + fitted.conf_int().loc['xj'].to_list()]
 
-    # run subsamples for station-specific attractiveness
-    xjs = []
-    for stop, g in tqdm(dat.groupby('station'), desc='Subsample fitting'):
-        m = sm.OLS(g['y'], g[['distance', 'alpha', 'xi', 'xj']])
-        fitted = m.fit(cov_type='HC1')
-        xjs += [[stop, fitted.params.loc['xj']]]
+    att_by_demo = pd.DataFrame(att_by_demo, columns=['id', 'group', 'attract', 'pvalue', 'lower', 'upper'])
+    att_by_demo = att_by_demo.merge(station[['id', 'name']], on='id', how='left')
+    att_by_demo = att_by_demo.sort_values('attract', ascending=True)
 
-    att = pd.DataFrame(xjs, columns=['id', 'att'])
-    att = att.merge(station[['id', 'name']], on='id', how='left')
-    att = att.sort_values('att', ascending=True)
+    # before plotting in the heatmap, minmax it
+    att4plot = pd.DataFrame()
+    for _, g in att_by_demo.groupby('id'):
+        g['norm_group'] = minmax_scale(g['attract'])
+        att4plot = pd.concat([att4plot, g], axis=0)
 
-    fig = plt.figure(figsize=(8, 10))
-    plt.plot(att.att.values, range(len(att)))
-    plt.yticks(range(len(att)), att.name.tolist(), rotation=0)
-    plt.tight_layout()
-    plt.margins(0.01)
-    fig.savefig('result/attraction.png', format='png', dpi=100)
+    att4plot['norm_all'] = minmax_scale(att4plot['attract'])
+    # use heatmap for attractiveness representation
+    grouped = att4plot.pivot(index='id', columns='group', values='attract')
+    totaled = att4plot.pivot(index='id', columns='group', values='norm_all')
+    att4plot['train'] = att4plot['id'].apply(lambda x: x[:2])
+
+    # fig = plt.figure(figsize=(3, 21), dpi=120)
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(5, 15))
+    for idx, (train, g) in enumerate(att4plot.groupby('train')):
+        # make the figure
+        g = g.pivot(index='id', columns='group', values='attract')
+        im = sns.heatmap(g, cmap="RdYlGn_r", cbar=False, ax=axes[idx], linewidth=1, alpha=0.8)
+        # axes[idx].set_yticklabels(labels=g.index, rotation=60, fontsize=14)
+        # axes[idx].set_ylabel(ylabel=f'{train}', rotation=90, fontsize=14, labelpad=12)
+        # axes[idx].set_xticklabels(labels=fgroups, fontsize=14, rotation=90, horizontalalignment='center')
+
+    mappable = im.get_children()[0]
+    cbar = plt.colorbar(mappable, ax=axes, pad=0.1, orientation='vertical')
+    cbar.ax.tick_params(rotation=90, labelsize=14)
+    # plt.savefig(save / 'heatmap.png', dpi=200, bbox_inches='tight')
     plt.show()
-    return dat
 
-
-def gravity_model(d: pd.DataFrame):
-    """
-    Modified / advanced model where a few changes could be made,
-    - distance could be adjusted by price_level
-    - opening time / popular times
-    - accessibility (wheels)
-
-    :param d:
-    :return:
-    """
-
+    # im = sns.heatmap(grouped, cmap="RdYlGn_r", cbar=True, linewidth=1, alpha=0.8)
+    # plt.yticks(range(len(fgroups)), labels=fgroups, fontsize=14)
+    # plt.xticks(range(len(att4plot)), att4plot['id'].tolist(), fontsize=14)
+    # cbar = plt.colorbar(im.get_children()[0], pad=0.02, orientation='vertical')
+    # cbar.ax.tick_params(rotation=90, labelsize=14)
+    # plt.show()
     return
 
 
@@ -173,3 +291,8 @@ if __name__ == '__main__':
     station = pd.read_excel('result/odakyu-stops-final.xlsx')
     stops = station['id'].tolist()
     poi = get_poi_by_station(oda, dmap, stops[0])
+    # get purpose
+    purpose = pd.read_excel('poi/category-list-purpose-annotated.xlsx')
+
+    # load geo data
+    pg = gpd.read_file('data/station-passengers-2021/utf8/S12-22_NumberOfPassengers.shp', encoding='utf8')
