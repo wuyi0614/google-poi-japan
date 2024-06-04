@@ -30,14 +30,20 @@ with the script `google.py` to scrape down the data.
 
 ## TODO
 
+### Plotting-related
+
+- [ ] map-based plotting for POI categories / statistics (maybe indicators)
+- [ ] station-specific and station/demographics-specific plotting
+
 ### Computing-related
 
 - [x] create an optimal & annotated (manual+auto) POI category list: `optimal-poi-categorised.xlsx`
 - [x] manually annotated over 600 records and filter those tertiary-categorised POIs with <10 entries (~1.9%)
 - [x] use TF-IDF method to predict the primary and secondary categories with 287 training samples and 2016 predicted samples (14.2%)
-- [ ] properly link trip purpose (grouped population) and POI categories
 - [x] summarise 15 primary, 90 secondary, 1016 tertiary POI categories
-- [ ] passengers data lack of description over variables
+- [ ] use visiting data in December for the purpose mapping
+- [ ] properly link trip purpose (grouped population) and POI categories
+- [ ] fix negative values for station-specific estimation of attractiveness!
 
 ### Parsing-related
 

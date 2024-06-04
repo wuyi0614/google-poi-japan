@@ -97,3 +97,29 @@ def neighbour_compute(src: gpd.GeoDataFrame,
 
     # completed
     return
+
+
+def match_land_price(src: gpd.GeoDataFrame,
+                     tar: gpd.GeoDataFrame,
+                     key: str,
+                     buffer: int = 2000):
+    """
+    Search and match nearby POIs using a buffer zone!
+
+    :param src: A geo-dataframe with geometry
+    :param tar: B geo-dataframe with geometry
+    :param key: the key for additional info
+    :param buffer: buffer size (radius)
+    """
+    src['price'] = 0
+    for idx in tqdm(src.index, desc='Nearby Searching'):
+        row = src.loc[[idx], :]
+        x = row.buffer(buffer).unary_union
+        nearby = tar['geometry'].intersection(x)
+        confirmed = tar.loc[~nearby.is_empty, :]
+        if confirmed.empty:
+            print(f'Error at row {idx}, no data was found!')
+
+        src.loc[idx, 'price'] = confirmed[key].mean()
+
+    return src

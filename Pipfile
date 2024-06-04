@@ -26,6 +26,7 @@ geopy = '*'
 geopandas = '*'
 matplotlib = '*'
 seaborn = '*'
+plotly = '*'
 
 # utilities
 tqdm = '*'

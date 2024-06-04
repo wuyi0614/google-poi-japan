@@ -18,7 +18,7 @@ from tqdm import tqdm
 from pathlib import Path
 
 from utils import get_timestamp, insert, create_engine
-from stats import neighbour_compute
+from stats import neighbour_compute, match_land_price
 
 
 def checking(chunk: pd.DataFrame, cnt: dict = None):
@@ -214,7 +214,7 @@ if __name__ == '__main__':
                        save=Path(sqlite), to_tbl='odakyu', engine=engine)
 
     # retrieve station-nearby POIs
-    file = Path('result') / 'odakyu-stops-final-2024-05-06.xlsx'
+    file = Path('result') / 'odakyu-stops-final.xlsx'
     neighbours = pd.read_excel(file)
     # see how buffer and crs works:
     # https://stackoverflow.com/questions/74333139/how-to-make-a-buffer-have-specific-latitude-and-longitude-coordinates-in-geopand
@@ -230,3 +230,13 @@ if __name__ == '__main__':
     cids_2k = pd.read_sql_table('odakyu2k', engine)['cid'].tolist()
     k1 = retrieve_by_cid(engine, 'odakyu', cids_1k, save, 'odakyu-listing1k')
     k2 = retrieve_by_cid(engine, 'odakyu', cids_2k, save, 'odakyu-listing2k')
+
+    # load land price data
+    # source: https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L01-2024.html
+    # use L01_007=year, L01_008=price (単位は[円/㎡)
+    lp = gpd.read_file('data/land-price-2024/L01-24.shp')
+    lp = lp.to_crs('EPSG:3857')
+    priced_station = match_land_price(neighbours, lp, 'L01_008', 2000)
+    # impute the missing data by average value for idx=50
+    priced_station.loc[50, 'price'] = priced_station.loc[[49, 51], 'price'].mean()
+    priced_station.to_excel('result/odakyu-stops-with-price.xlsx', index=False)
