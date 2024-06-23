@@ -118,7 +118,7 @@ if __name__ == '__main__':
     import json
 
     # general config
-    save = Path('')
+    save = Path('poi')
 
     # load poi data
     sqlite = 'sqlite:///data/tokyo-poi.db'
@@ -144,6 +144,14 @@ if __name__ == '__main__':
     ratio = poi.loc[poi['count'] < 10, 'count'].sum() / poi['count'].sum()
     print(f'Use <10 as threshold, {round(ratio, 3) * 100}% of entries have been deleted')
     poi = poi[poi['count'] >= 10]  # remove those with less than 10 POIs
+    # recalibrate the secondary POI categories
+    remap = pd.read_excel('poi/poi-category-remapping.xlsx')
+    remap.index = remap['origin']
+    remap = remap['remap'].to_dict()
+    remapping = {k: k for k in poi.secondary.unique()}
+    remapping.update(remap)
+    poi.secondary = poi.secondary.apply(lambda x: remapping[x])
+    poi = poi[~poi.secondary.isna()]
 
     mask = poi[['primary', 'secondary']].duplicated()
     top = poi.loc[~mask, ['primary', 'secondary']]
@@ -158,7 +166,9 @@ if __name__ == '__main__':
     poi.columns = ['category', 'primary', 'secondary', 'count']
     print(f'Unique three-tiered POIs categories have: {len(poi)} entries!')
     selected = oda[oda['category'].isin(poi['category'].tolist())]
+    # to align with trajectory data, the final dataset was 185,120, now 183,112 drop
     selected = selected.merge(poi[['category', 'primary', 'secondary']], on='category', how='left')
     selected.to_csv(save / f'categories-odakyu-poi-2k-{get_timestamp()}.csv', index=False)
+
     categories = get_category_list(opt_poi_file, mode='all')
     (save / f'categories-all-{get_timestamp()}.json').write_text(json.dumps(categories))

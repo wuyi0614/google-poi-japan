@@ -223,13 +223,13 @@ if __name__ == '__main__':
     # retrieve both 1/2k buffered POIs
     # NB. produce duplicates if the two lines are separately executed!!!
     retrieve_by_neighbours(fname, neighbours, buffer=1000, to_tbl='odakyu1k', size=10000)
-    retrieve_by_neighbours(fname, neighbours, buffer=2000, to_tbl='odakyu2k', size=10000)
+    # retrieve_by_neighbours(fname, neighbours, buffer=2000, to_tbl='odakyu2k', size=10000)
 
     # retrieve cids
     cids_1k = pd.read_sql_table('odakyu1k', engine)['cid'].tolist()
-    cids_2k = pd.read_sql_table('odakyu2k', engine)['cid'].tolist()
+    # cids_2k = pd.read_sql_table('odakyu2k', engine)['cid'].tolist()
     k1 = retrieve_by_cid(engine, 'odakyu', cids_1k, save, 'odakyu-listing1k')
-    k2 = retrieve_by_cid(engine, 'odakyu', cids_2k, save, 'odakyu-listing2k')
+    # k2 = retrieve_by_cid(engine, 'odakyu', cids_2k, save, 'odakyu-listing2k')
 
     # load land price data
     # source: https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L01-2024.html
