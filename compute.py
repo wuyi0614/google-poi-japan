@@ -74,8 +74,9 @@ def factorise(data: pd.DataFrame, keep_zero: bool = False, keep_nan: bool = Fals
 
         if keep_zero and not data[data[key] == 0].empty:
             data[key] = np.log(data[key] + 1)
+            # data[key] = data[key].apply(lambda x: np.log(x) if x != 0 else 0)  # no integrity!
         else:
-            data[key] = np.log(data[key])
+            data[key] = data[key].apply(lambda x: np.log(x))
 
     if not keep_nan:
         data.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -179,6 +180,7 @@ def add_measure(stop: pd.Series,
     # compute k_ij
     # k_ij = entropy(near['rating_value'].dropna().values)
     k_ij = near['rating_value'].mean()  # Good! average rating as a control variable
+    k_ijk = (k_ij * gdist).flatten().tolist()
 
     # compute v_i1, being independent of `near` or `category`
     # v_i1 = len(poi) / len(full)
@@ -214,9 +216,9 @@ def add_measure(stop: pd.Series,
     d_ij = near['distance'].mean()
 
     # return values and varnames
-    values = [g_ij, g_ij_robust] + g_ijk + g_ijk_robust + [k_ij, v_i1, v_i2, w_j2, d_ij] + [w_j1] + w_jk1
-    keys = (['g', 'gr'] + [f'g[{k}]' for k in groups] + [f'gr[{k}]' for k in groups] +
-            ['k', 'v1', 'v2', 'w2', 'd', 'w1'] + [f'w1[{k}]' for k in groups])
+    values = [g_ij, g_ij_robust] + g_ijk + g_ijk_robust + [k_ij] + k_ijk + [v_i1, v_i2, w_j2, d_ij] + [w_j1] + w_jk1
+    keys = (['g', 'gr'] + [f'g[{k}]' for k in groups] + [f'gr[{k}]' for k in groups] + ['k'] +
+            [f'k[{k}]' for k in groups] + ['v1', 'v2', 'w2', 'd', 'w1'] + [f'w1[{k}]' for k in groups])
     return values, keys
 
 
@@ -227,7 +229,8 @@ def panelise(d: pd.DataFrame,
              groups: list,
              clevel: str = 'secondary',
              save: Path = Path('result'),
-             radius: float = 1) -> pd.DataFrame:
+             radius: float = 1,
+             keep_zero: bool = True) -> pd.DataFrame:
     """
     Panelise the final dataset for regressions.
     The data structure should be a bilateral i->j form and k-th , e.g.
@@ -241,6 +244,7 @@ def panelise(d: pd.DataFrame,
     :param clevel: the category level, primary, secondary, category
     :param save: path for saving the dataframe
     :param radius: a float radius that limits POIs selected
+    :param keep_zero: True=log(x+1), False=log(x) and log(0) -> np.nan
     """
     rows = []
     d['cid'] = d['cid'].astype(str)
@@ -256,9 +260,18 @@ def panelise(d: pd.DataFrame,
 
     # create the dataset
     dat = pd.DataFrame(rows, columns=['station', 'category'] + keys)
-    dat.describe().T.round(3).to_excel(save / f'summary-stats-{get_timestamp()}.xlsx')
-    dat = factorise(dat, keep_zero=True)
-    # output the dataset
+
+    # format for statistical summary
+    sumkeys = (['g'] + [f'g[{k}]' for k in groups] + ['w1'] + [f'w1[{k}]' for k in groups] +
+               ['k'] + [f'k[{k}]' for k in groups] + ['v1', 'v2', 'w2', 'd'] +
+               ['gr'] + [f'gr[{k}]' for k in groups])
+    dat[sumkeys].describe().T.round(3).to_excel(save / f'summary-stats-{get_timestamp()}.xlsx')
+    # output the non-factorised dataset
+    f = save / f'panel-unfactorised-{get_timestamp()}.xlsx'
+    dat.to_excel(f, index=False)
+
+    # output the factorised dataset
+    dat = factorise(dat, keep_zero=keep_zero)
     f = save / f'panel-{get_timestamp()}.xlsx'
     dat.to_excel(f, index=False)
     print(f'Saved file at {str(f)}')
@@ -278,30 +291,30 @@ def baseline(pnl: pd.DataFrame, save: Path = Path('result')) -> pd.DataFrame:
     print(results.summary())
 
     # run subsamples for station-specific attractiveness
-    att_by_station = []
-    robust = []
+    att_by_station = pd.DataFrame()
+    robust = pd.DataFrame()
     for stop, g in tqdm(pnl.groupby('station'), desc='By station fitting'):
         m = sm.OLS(g['g'], g[variables])
         fitted = m.fit(cov_type='HC0')
-        att_by_station += [[stop] + fitted.params.loc[['w1', 'w2']].tolist()]
+        r = pd.concat([fitted.params, fitted.conf_int()], axis=1).reset_index()
+        r.columns = ['variable', 'param', 'lower', 'upper']
+        r['id'] = stop
+        att_by_station = pd.concat([att_by_station, r], axis=0)
+
         # for robustness check
         m = sm.OLS(g['gr'], g[variables])
         fitted = m.fit(cov_type='HC0')
-        robust += [[stop] + fitted.params.loc[['w1', 'w2']].tolist()]
+        r = pd.concat([fitted.params, fitted.conf_int()], axis=1).reset_index()
+        r.columns = ['variable', 'param', 'lower', 'upper']
+        r['id'] = stop
+        robust = pd.concat([robust, r], axis=0)
 
     # output results
-    att_by_station = pd.DataFrame(att_by_station, columns=['id', 'attract1', 'attract2'])
     att_by_station = att_by_station.merge(station[['id', 'name']], on='id', how='left')
-    att_by_station['attract'] = att_by_station['attract1'] + att_by_station['attract2']
-    att_by_station = att_by_station.sort_values('attract', ascending=True)
     att_by_station.to_excel(save / f'attract-by-station-{get_timestamp()}.xlsx', index=False)
     # output robust results
-    robust = pd.DataFrame(robust, columns=['id', 'attract1', 'attract2'])
     robust = robust.merge(station[['id', 'name']], on='id', how='left')
-    robust['attract'] = robust['attract1'] + robust['attract2']
-    robust = robust.sort_values('attract', ascending=True)
     robust.to_excel(save / f'robust-by-station-{get_timestamp()}.xlsx', index=False)
-    # output robust results
     return att_by_station
 
 
@@ -316,40 +329,36 @@ def extended(pnl: pd.DataFrame, save: Path = Path('result')) -> pd.DataFrame:
     :param save: path for saving the dataframe
     """
     # run subsamples for demographic-specific attractiveness
-    att_by_demo, rsquare = [], []
-    robust = []
-    regs = pd.DataFrame()
-    genkeys = ['k', 'v1', 'v2', 'w2', 'd']
+    att_by_demo, robust = pd.DataFrame(), pd.DataFrame()
+    genkeys = ['v1', 'v2', 'w2', 'd']
     for stop, g in tqdm(pnl.groupby('station'), desc='By demographic fitting'):
         for i, f in enumerate(groups):
-            m = sm.OLS(g[f'g[{f}]'], g[genkeys + [f'w1[{f}]']])
+            m = sm.OLS(g[f'g[{f}]'], g[genkeys + [f'w1[{f}]', f'k[{f}]']])
             fitted = m.fit(cov_type='HC0')
-            att_by_demo += [[stop, f] + fitted.params.loc[[f'w1[{f}]', 'w2']].tolist()]
+            r = pd.concat([fitted.params, fitted.pvalues, fitted.conf_int()], axis=1).reset_index()
+            r.columns = ['variable', 'param', 'pvalue', 'lower', 'upper']
             # collect reg results in SI
-            r = pd.DataFrame({'param': fitted.params, 'pvalue': fitted.pvalues, 'ci_lower': fitted.conf_int()[0],
-                              'ci_upper': fitted.conf_int()[1]})
-            r['name'] = stop
+            r['id'] = stop
             r['group'] = f
-            regs = pd.concat([regs, r], axis=0)
-            rsquare += [fitted.rsquared_adj]
+            r['rsquared'] = fitted.rsquared_adj
+            att_by_demo = pd.concat([att_by_demo, r], axis=0)
+
             # for robustness check
-            m = sm.OLS(g[f'gr[{f}]'], g[genkeys + [f'w1[{f}]']])
+            m = sm.OLS(g[f'gr[{f}]'], g[genkeys + [f'w1[{f}]', f'k[{f}]']])
             fitted = m.fit(cov_type='HC0')
-            robust += [[stop, f] + fitted.params.loc[[f'w1[{f}]', 'w2']].tolist()]
+            r = pd.concat([fitted.params, fitted.pvalues, fitted.conf_int()], axis=1).reset_index()
+            r.columns = ['variable', 'param', 'pvalue', 'lower', 'upper']
+            r['id'] = stop
+            r['group'] = f
+            r['rsquared'] = fitted.rsquared_adj
+            robust = pd.concat([robust, r], axis=0)
 
     # output regs params
-    regs.to_excel(save / f'regs-by-demographic-{get_timestamp()}.xlsx')
     # output for regression results
-    att_by_demo = pd.DataFrame(att_by_demo, columns=['id', 'group', 'attract1', 'attract2'])
     att_by_demo = att_by_demo.merge(station[['id', 'name']], on='id', how='left')
-    att_by_demo['attract'] = att_by_demo['attract1'] + att_by_demo['attract2']
-    att_by_demo = att_by_demo.sort_values('attract', ascending=True)
     att_by_demo.to_excel(save / f'attract-by-demographic-{get_timestamp()}.xlsx', index=False)
     # output for robust results
-    robust = pd.DataFrame(robust, columns=['id', 'group', 'attract1', 'attract2'])
     robust = robust.merge(station[['id', 'name']], on='id', how='left')
-    robust['attract'] = robust['attract1'] + robust['attract2']
-    robust = robust.sort_values('attract', ascending=True)
     robust.to_excel(save / f'robust-by-demographic-{get_timestamp()}.xlsx', index=False)
     return att_by_demo
 
@@ -414,10 +423,10 @@ if __name__ == '__main__':
     for i in np.arange(10, 70, 10):
         purpose[f'w{i}'] = mm.fit_transform(purpose[[f'f{i}']] / purpose[f'f{i}'].sum()).flatten()
         # purpose[f'w{i}'] = purpose[f'f{i}'] / purpose[f'f{i}'].sum()
-
+    # NB. the best weighting method is leaving the above alone!
     # run models
     groups = [f'w{i}' for i in np.arange(10, 70, 10)]  # use the original weighted mappings
-    dat = panelise(oda, dmap, purpose, station, clevel='secondary', groups=groups, radius=1)
+    dat = panelise(oda, dmap, purpose, station, clevel='secondary', groups=groups, radius=1, keep_zero=True)
     # dat = pd.read_excel('result/panel-2024-06-23 17-20-35.xlsx')
     rbase = baseline(dat)
     rext = extended(dat)
